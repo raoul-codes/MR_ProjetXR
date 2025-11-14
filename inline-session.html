@@ -1,0 +1,328 @@
+<!doctype html>
+<!--
+Copyright 2018 The Immersive Web Community Group
+...
+-->
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1, user-scalable=no'>
+    <meta name='mobile-web-app-capable' content='yes'>
+    <meta name='apple-mobile-web-app-capable' content='yes'>
+    <link rel='icon' type='image/png' sizes='32x32' href='favicon-32x32.png'>
+    <link rel='icon' type='image/png' sizes='96x96' href='favicon-96x96.png'>
+    <link rel='stylesheet' href='css/common.css'>
+
+    <title>Inline Session</title>
+  </head>
+  <body>
+    <header>
+      <details open>
+        <summary>Inline Session</summary>
+        <p>
+          This sample demonstrates use of an 'inline' XRSession to present
+          content on the page prior to entering XR presentation with an
+          immersive session. The viewer pose can be adjusted by clicking and
+          dragging with mouse or touch.
+          <a class="back" href="./">Back</a>
+          <p>
+            <input id='vertFOV' value='90' min='30' max='150' step='10' type='range'/><br/>
+            <label id='vertFOVLabel' for="vertFOV">Vertical FOV: </label>
+          </p>
+        </p>
+      </details>
+    </header>
+    <script type="module">
+      import {WebXRButton} from './js/util/webxr-button.js';
+      import {Scene} from './js/render/scenes/scene.js';
+      import {Renderer, createWebGLContext} from './js/render/core/renderer.js';
+      import {Gltf2Node} from './js/render/nodes/gltf2.js';
+      import {SkyboxNode} from './js/render/nodes/skybox.js';
+      import {mat4, vec3, quat} from './js/render/math/gl-matrix.js';
+      import {QueryArgs} from './js/util/query-args.js';
+
+      // If requested, use the polyfill to provide support for mobile devices
+      // and devices which only support WebVR.
+      import WebXRPolyfill from './js/third-party/webxr-polyfill/build/webxr-polyfill.module.js';
+      if (QueryArgs.getBool('usePolyfill', true)) {
+        let polyfill = new WebXRPolyfill();
+      }
+
+      // Inline sessions FOV
+      let inlineSession = null;
+      let fov = document.getElementById('vertFOV');
+      let fovLabel = document.getElementById('vertFOVLabel');
+      function updateFov() {
+        let value = parseFloat(fov.value);
+        let radValue = value * (Math.PI / 180);
+
+        if (inlineSession) {
+          inlineSession.updateRenderState({
+            inlineVerticalFieldOfView: radValue
+          });
+        }
+        
+        let label = `Vertical FOV: ${value} degrees`;
+        if (value == 90) {
+          label += ' (default)';
+        }
+        fovLabel.textContent = label;
+      }
+      fov.addEventListener('change', updateFov);
+
+      // XR globals.
+      let xrButton = null;      // Bouton VR
+      let xrButtonNeu = null;   // AJOUT AR : bouton AR
+      let xrImmersiveRefSpace = null;
+      let xrInlineRefSpace = null;
+      let arStartedNeu = false; // AJOUT AR : flag pour AR
+
+      // WebGL scene globals.
+      let gl = null;
+      let renderer = null;
+      let scene = new Scene();
+      let solarSystem = new Gltf2Node({url: 'media/gltf/space/space.gltf'});
+
+      // AJOUT AR : skybox dans une variable pour pouvoir la cacher en AR
+      let skybox = new SkyboxNode({url: 'media/textures/milky-way-4k.png'});
+
+      scene.addNode(solarSystem);
+      scene.addNode(skybox);
+
+      function initXR() {
+        console.log("wir sind in initXR");
+
+        // Bouton VR existant
+        xrButton = new WebXRButton({
+          onRequestSession: onRequestSession,
+          onEndSession: onEndSession
+        });
+        document.querySelector('header').appendChild(xrButton.domElement);
+
+        // AJOUT AR : bouton WebXR pour AR
+        xrButtonNeu = new WebXRButton({
+          onRequestSession: onRequestSessionNeu,
+          onEndSession: onEndSession,
+          textEnterXRTitle: "START AR",
+          textXRNotFoundTitle: "AR NOT FOUND",
+          textExitXRTitle: "EXIT AR",
+        });
+        document.querySelector('header').appendChild(xrButtonNeu.domElement);
+
+        if (navigator.xr) {
+          navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+            xrButton.enabled = supported;
+          });
+
+          // AJOUT AR : activer le bouton AR si supporté
+          navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
+            xrButtonNeu.enabled = supported;
+          });
+
+          // Inline session toujours démarrée par défaut
+          navigator.xr.requestSession('inline').then((session) => {
+            inlineSession = session;
+            onSessionStarted(session);
+            updateFov();
+          });
+        }
+      }
+
+      // Bouton VR : session immersive-vr
+      function onRequestSession() {
+        return navigator.xr.requestSession('immersive-vr').then((session) => {
+          xrButton.setSession(session);
+          session.isImmersive = true;
+          arStartedNeu = false; // on n’est pas en AR
+          onSessionStarted(session);
+        });
+      }
+
+      // AJOUT AR : démarrer une session immersive-ar
+      function onRequestSessionNeu() {
+        return navigator.xr.requestSession('immersive-ar').then((session) => {
+          xrButtonNeu.setSession(session);
+          session.isImmersive = true;
+          arStartedNeu = true;
+          onSessionStarted(session);
+        });
+      }
+
+      function onSessionStarted(session) {
+        session.addEventListener('end', onSessionEnded);
+
+        if (!gl) {
+          gl = createWebGLContext({
+            xrCompatible: true
+          });
+
+          document.body.appendChild(gl.canvas);
+          
+          function onResize() {
+            gl.canvas.width = gl.canvas.clientWidth * window.devicePixelRatio;
+            gl.canvas.height = gl.canvas.clientHeight * window.devicePixelRatio;
+          }
+          window.addEventListener('resize', onResize);
+          onResize();
+
+          addInlineViewListeners(gl.canvas);
+
+          renderer = new Renderer(gl);
+          scene.setRenderer(renderer);
+        }
+        
+        let glLayer = new XRWebGLLayer(session, gl);
+
+        session.updateRenderState({
+          baseLayer: glLayer
+        });
+
+        let refSpaceType = session.isImmersive ? 'local' : 'viewer';
+        session.requestReferenceSpace(refSpaceType).then((refSpace) => {
+          if (session.isImmersive) {
+            xrImmersiveRefSpace = refSpace;
+
+            // AJOUT AR : gérer les resets de référence en AR
+            xrImmersiveRefSpace.addEventListener('reset', (evt) => {
+              if (evt.transform) {
+                xrImmersiveRefSpace = xrImmersiveRefSpace.getOffsetReferenceSpace(evt.transform);
+              }
+            });
+
+          } else {
+            xrInlineRefSpace = refSpace;
+          }
+          session.requestAnimationFrame(onXRFrame);
+        });
+      }
+
+      function onEndSession(session) {
+        session.end();
+      }
+
+      function onSessionEnded(event) {
+        if (event.session.isImmersive) {
+          xrButton.setSession(null);
+          xrButtonNeu.setSession?.(null);
+        }
+      }
+
+      // Called every time a XRSession requests that a new frame be drawn.
+      function onXRFrame(t, frame) {
+        let session = frame.session;
+
+        let refSpace = session.isImmersive ?
+                         xrImmersiveRefSpace :
+                         xrInlineRefSpace;
+
+        if (!session.isImmersive) {
+          refSpace = getAdjustedRefSpace(refSpace);
+        }
+
+        let pose = frame.getViewerPose(refSpace);
+
+        scene.startFrame();
+
+        session.requestAnimationFrame(onXRFrame);
+
+        if (pose) {
+          let glLayer = session.renderState.baseLayer;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, glLayer.framebuffer);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+          // AJOUT AR : cacher la skybox en AR pour voir le monde réel
+          if (session.isImmersive && arStartedNeu) {
+            skybox.visible = false;
+          } else {
+            skybox.visible = true;
+          }
+
+          for (let view of pose.views) {
+            let viewport = glLayer.getViewport(view);
+            gl.viewport(viewport.x, viewport.y,
+                        viewport.width, viewport.height);
+
+            scene.draw(view.projectionMatrix, view.transform);
+          }
+        }
+
+        scene.endFrame();
+      }
+
+      // Inline view adjustment code (inchangé)
+      let lookYaw = 0;
+      let lookPitch = 0;
+      const LOOK_SPEED = 0.0025;
+
+      function getAdjustedRefSpace(refSpace) {
+        let invOrientation = quat.create();
+        quat.rotateX(invOrientation, invOrientation, -lookPitch);
+        quat.rotateY(invOrientation, invOrientation, -lookYaw);
+        let xform = new XRRigidTransform(
+            {x: 0, y: 0, z: 0},
+            {x: invOrientation[0], y: invOrientation[1], z: invOrientation[2], w: invOrientation[3]});
+        return refSpace.getOffsetReferenceSpace(xform);
+      }
+
+      function rotateView(dx, dy) {
+        lookYaw += dx * LOOK_SPEED;
+        lookPitch += dy * LOOK_SPEED;
+        if (lookPitch < -Math.PI*0.5)
+            lookPitch = -Math.PI*0.5;
+        if (lookPitch > Math.PI*0.5)
+            lookPitch = Math.PI*0.5;
+      }
+
+      function addInlineViewListeners(canvas) {
+        canvas.addEventListener('mousemove', (event) => {
+          if (event.buttons && 2) {
+            rotateView(event.movementX, event.movementY);
+          }
+        });
+
+        let primaryTouch = undefined;
+        let prevTouchX = undefined;
+        let prevTouchY = undefined;
+
+        canvas.addEventListener("touchstart", (event) => {
+          if (primaryTouch == undefined) {
+            let touch = event.changedTouches[0];
+            primaryTouch = touch.identifier;
+            prevTouchX = touch.pageX;
+            prevTouchY = touch.pageY;
+          }
+        });
+
+        canvas.addEventListener("touchend", (event) => {
+          for (let touch of event.changedTouches) {
+            if (primaryTouch == touch.identifier) {
+              primaryTouch = undefined;
+              rotateView(touch.pageX - prevTouchX, touch.pageY - prevTouchY);
+            }
+          }
+        });
+
+        canvas.addEventListener("touchcancel", (event) => {
+          for (let touch of event.changedTouches) {
+            if (primaryTouch == touch.identifier) {
+              primaryTouch = undefined;
+            }
+          }
+        });
+
+        canvas.addEventListener("touchmove", (event) => {
+          for (let touch of event.changedTouches) {
+            if (primaryTouch == touch.identifier) {
+              rotateView(touch.pageX - prevTouchX, touch.pageY - prevTouchY);
+              prevTouchX = touch.pageX;
+              prevTouchY = touch.pageY;
+            }
+          }
+        });
+      }
+
+      // Start the XR application.
+      initXR();
+    </script>
+  </body>
+</html>
