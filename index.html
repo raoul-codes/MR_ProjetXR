@@ -1,8 +1,5 @@
 <!doctype html>
-<!--
-Copyright 2018 The Immersive Web Community Group
-...
--->
+
 <html>
   <head>
     <meta charset='utf-8'>
@@ -72,18 +69,18 @@ Copyright 2018 The Immersive Web Community Group
 
       // XR globals.
       let xrButton = null;      // Bouton VR
-      let xrButtonNeu = null;   // AJOUT AR : bouton AR
+      let xrButtonNeu = null;   // Add AR : bouton AR
       let xrImmersiveRefSpace = null;
       let xrInlineRefSpace = null;
-      let arStartedNeu = false; // AJOUT AR : flag pour AR
+      let arStartedNeu = false; // Add AR : flag for AR
 
-      // WebGL scene globals.
+      // WebGL global scene.
       let gl = null;
       let renderer = null;
       let scene = new Scene();
       let solarSystem = new Gltf2Node({url: 'media/gltf/space/space.gltf'});
 
-      // AJOUT AR : skybox dans une variable pour pouvoir la cacher en AR
+      // Add AR :Skybox in a variable so it can be hidden in AR
       let skybox = new SkyboxNode({url: 'media/textures/milky-way-4k.png'});
 
       scene.addNode(solarSystem);
@@ -92,14 +89,14 @@ Copyright 2018 The Immersive Web Community Group
       function initXR() {
         console.log("wir sind in initXR");
 
-        // Bouton VR existant
+        // Bouton VR 
         xrButton = new WebXRButton({
           onRequestSession: onRequestSession,
           onEndSession: onEndSession
         });
         document.querySelector('header').appendChild(xrButton.domElement);
 
-        // AJOUT AR : bouton WebXR pour AR
+        // add AR : bouton WebXR for AR
         xrButtonNeu = new WebXRButton({
           onRequestSession: onRequestSessionNeu,
           onEndSession: onEndSession,
@@ -114,12 +111,12 @@ Copyright 2018 The Immersive Web Community Group
             xrButton.enabled = supported;
           });
 
-          // AJOUT AR : activer le bouton AR si supporté
+          // Add AR : Enable the AR button if supported.
           navigator.xr.isSessionSupported('immersive-ar').then((supported) => {
             xrButtonNeu.enabled = supported;
           });
 
-          // Inline session toujours démarrée par défaut
+          // Inline session always starts by default
           navigator.xr.requestSession('inline').then((session) => {
             inlineSession = session;
             onSessionStarted(session);
@@ -138,7 +135,7 @@ Copyright 2018 The Immersive Web Community Group
         });
       }
 
-      // AJOUT AR : démarrer une session immersive-ar
+      // Add AR : start an immersive-ar session
       function onRequestSessionNeu() {
         return navigator.xr.requestSession('immersive-ar').then((session) => {
           xrButtonNeu.setSession(session);
@@ -182,7 +179,7 @@ Copyright 2018 The Immersive Web Community Group
           if (session.isImmersive) {
             xrImmersiveRefSpace = refSpace;
 
-            // AJOUT AR : gérer les resets de référence en AR
+            // add AR : manage reference resets in AR
             xrImmersiveRefSpace.addEventListener('reset', (evt) => {
               if (evt.transform) {
                 xrImmersiveRefSpace = xrImmersiveRefSpace.getOffsetReferenceSpace(evt.transform);
@@ -230,7 +227,7 @@ Copyright 2018 The Immersive Web Community Group
           gl.bindFramebuffer(gl.FRAMEBUFFER, glLayer.framebuffer);
           gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-          // AJOUT AR : cacher la skybox en AR pour voir le monde réel
+          // Add AR : Hide the skybox in AR to see the real world
           if (session.isImmersive && arStartedNeu) {
             skybox.visible = false;
           } else {
@@ -249,7 +246,7 @@ Copyright 2018 The Immersive Web Community Group
         scene.endFrame();
       }
 
-      // Inline view adjustment code (inchangé)
+      // Inline view adjustment code 
       let lookYaw = 0;
       let lookPitch = 0;
       const LOOK_SPEED = 0.0025;
