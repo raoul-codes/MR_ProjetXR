@@ -1,92 +1,210 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="de">
 <head>
   <meta charset="UTF-8">
-  <title>Scène A-Frame — Projet XR</title>
+  <title>A-Frame Lampe + Zoom – MR Projekt</title>
 
-  <!-- A-Frame -->
   <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
 
+  <!-- ====================================================== -->
+  <!--               KOMPONENTE: LAMPE KONTROLLE              -->
+  <!-- ====================================================== -->
+  <script>
+    AFRAME.registerComponent('lampe-controller', {
+      init: function () {
+        this.isDragging = false;
+        this.prevX = 0;
+        this.prevY = 0;
+
+        window.addEventListener('mousedown', evt => {
+          this.isDragging = true;
+          this.prevX = evt.clientX;
+          this.prevY = evt.clientY;
+        });
+
+        window.addEventListener('mouseup', () => {
+          this.isDragging = false;
+        });
+
+        window.addEventListener('mousemove', evt => {
+          if (!this.isDragging) return;
+
+          const dx = evt.clientX - this.prevX;
+          const dy = evt.clientY - this.prevY;
+          this.prevX = evt.clientX;
+          this.prevY = evt.clientY;
+
+          // Root → horizontale Drehung
+          const root = document.querySelector('#lampe-root');
+          let r = root.getAttribute('rotation');
+          r.y += dx * 0.2;
+          root.setAttribute('rotation', r);
+
+          // Arm → vertikale Drehung
+          const arm = document.querySelector('#lampe-bras');
+          let a = arm.getAttribute('rotation');
+          a.x -= dy * 0.2;
+          a.x = Math.max(-60, Math.min(60, a.x)); 
+          arm.setAttribute('rotation', a);
+        });
+      }
+    });
+
+    // =====================================================
+    // LICHT folgt der Lampenspitze
+    // =====================================================
+    AFRAME.registerComponent('follow-light', {
+      tick: function () {
+        const head = document.querySelector('#lampe-tete');
+        const light = document.querySelector('#licht');
+        let pos = head.object3D.getWorldPosition(new THREE.Vector3());
+        light.object3D.position.copy(pos);
+      }
+    });
+
+    // =====================================================
+    // KOMPONENTE: MOUSE ZOOM (Scrollrad)
+    // =====================================================
+    AFRAME.registerComponent('mouse-zoom', {
+      schema: {
+        min: {type: 'number', default: 1.5},  // minimaler Abstand
+        max: {type: 'number', default: 15},   // maximaler Abstand
+        speed: {type: 'number', default: 0.1} // Zoom-Geschwindigkeit
+      },
+
+      init: function () {
+        const el = this.el;
+        window.addEventListener('wheel', evt => {
+          evt.preventDefault();
+
+          let pos = el.getAttribute('position');
+          pos.z += evt.deltaY * this.data.speed;
+
+          // Grenzen anwenden
+          pos.z = Math.max(-this.data.max, Math.min(-this.data.min, pos.z));
+
+          el.setAttribute('position', pos);
+        });
+      }
+    });
+  </script>
+
+  <style>body {margin:0;}</style>
+
 </head>
+
 <body>
 
-  <!-- SCÈNE A-FRAME -->
-  <a-scene shadow="type: pcfsoft">
+<a-scene renderer="antialias: true; shadowMap: true" cursor="rayOrigin: mouse">
 
-    <!-- Assets (textures + model) -->
-    <a-assets>
-      <img id="murTex" src="assets/mur.jpg">
+  <!-- ASSETS -->
+  <a-assets>
+    <img id="wandTextur" src="assets/textur.jpg">
+    <a-asset-item id="meinModell" src="assets/modell.glb"></a-asset-item>
+  </a-assets>
 
-      <a-asset-item id="dino" src="assets/triceratops.glb"></a-asset-item>
-    </a-assets>
+  <!-- ========================================================= -->
+  <!--                        LAMPE                              -->
+  <!-- ========================================================= -->
 
-    <!-- Luight with shadows -->
-    <a-light type="directional"
-             position="1 3 2"
-             intensity="1.2"
-             cast-shadow="true">
-    </a-light>
+  <a-entity id="lampe-root"
+            position="0 0 2"
+            rotation="0 0 0"
+            lampe-controller>
 
-    <!-- Licht-->
-    <a-light type="ambient" intensity="0.5"></a-light>
+    <!-- Lampenfuss -->
+    <a-cylinder height="0.2"
+                 radius="0.4"
+                 color="#444"
+                 shadow="cast: true; receive: true"></a-cylinder>
 
-    <!-- Sol -->
-    <a-plane
-        position="0 0 -1"
-        rotation="-90 0 0"
-        width="10"
-        height="10"
-        color="#888"
-        shadow="receive: true">
-    </a-plane>
+    <!-- Arm Pivot -->
+    <a-entity id="lampe-bras"
+              position="0 0.2 0"
+              rotation="0 0 0">
 
-    <!-- Objet : cube -->
-    <a-box
-      id="box1"
-      position="-1 1 -3"
-      rotation="0 45 0"
-      depth="1" height="1" width="1"
-      src="#murTex"
-      shadow="cast: true; receive: true">
-    </a-box>
+      <!-- Arm -->
+      <a-box position="0 0.6 0"
+             depth="0.1"
+             height="1.2"
+             width="0.1"
+             color="#666"
+             shadow="cast: true; receive: true"></a-box>
 
-    <!-- Objet: sphère -->
-    <a-sphere
-      position="2 1 -3"
-      radius="0.6"
-      color="red"
-      shadow="cast: true; receive: true">
-    </a-sphere>
+      <!-- Kopf -->
+      <a-entity id="lampe-tete"
+                position="0 1.2 0">
 
-    <!-- Objet : cylindre -->
-    <a-cylinder
-      position="-2 1 -5"
-      color="yellow"
-      height="2"
-      radius="0.5"
-      shadow="cast: true; receive: true">
-    </a-cylinder>
+        <a-sphere radius="0.25"
+                  color="#fff2a8"
+                  emissive="#ffe066"
+                  emissiveIntensity="1.5"
+                  shadow="cast: true">
+        </a-sphere>
 
-    <!-- Objet : icosaèdre -->
-    <a-icosahedron
-      position="1 1 -5"
-      radius="1"
-      color="purple"
-      shadow="cast: true; receive: true">
-    </a-icosahedron>
+      </a-entity>
 
-    <!-- Objet : TRICERATOPS -->
-    <a-entity
-      gltf-model="#dino"
-      position="0 0 -4"
-      scale="0.5 0.5 0.5"
-      shadow="cast: true; receive: true">
     </a-entity>
+  </a-entity>
 
-    <!-- Caméra -->
-    <a-entity camera look-controls wasd-controls></a-entity>
+  <!-- Licht folgt der Lampenspitze -->
+  <a-entity id="licht"
+            light="type: directional; intensity: 1.2; castShadow: true;"
+            follow-light
+            shadow="cameraTop: 10; cameraBottom: -10; cameraLeft: -10; cameraRight: 10;">
+  </a-entity>
 
-  </a-scene>
+  <a-light type="ambient" intensity="0.45"></a-light>
+
+  <!-- BODEN -->
+  <a-plane position="0 0 -5"
+           rotation="-90 0 0"
+           width="25"
+           height="25"
+           color="#777"
+           shadow="receive: true">
+  </a-plane>
+
+  <!-- OBJEKTE -->
+  <a-box position="-5 0.5 -5"
+         src="#wandTextur"
+         shadow="cast: true; receive: true"></a-box>
+
+  <a-sphere position="-2 0.8 -5"
+            radius="0.8"
+            color="#e63946"
+            shadow="cast: true; receive: true"></a-sphere>
+
+  <a-cylinder position="1 1 -5"
+              height="2"
+              radius="0.7"
+              color="#f9c80e"
+              shadow="cast: true; receive: true"></a-cylinder>
+
+  <a-torus-knot position="4 1.3 -5"
+                radius="1"
+                radius-tubular="0.2"
+                color="#8e44ad"
+                shadow="cast: true; receive: true"></a-torus-knot>
+
+  <a-entity gltf-model="#meinModell"
+            position="7 0 -5"
+            scale="0.6 0.6 0.6"
+            shadow="cast: true; receive: true">
+  </a-entity>
+
+  <!-- ========================================================= -->
+  <!--               KAMERA MIT ZOOM-FUNKTION                    -->
+  <!-- ========================================================= -->
+  <a-entity camera
+            id="cam"
+            position="0 1.6 -6"
+            mouse-zoom="min: 0.1; max: 20; speed: 0.03"
+            look-controls
+            wasd-controls>
+  </a-entity>
+
+</a-scene>
 
 </body>
 </html>
